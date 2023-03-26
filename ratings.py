@@ -1,8 +1,10 @@
 import os
 import json
+from math import floor
 import mutagen
 from rich.console import Console
 from rich.progress import Progress
+from rich.panel import Panel
 from rich import print
 
 MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
@@ -33,14 +35,21 @@ def get_tracks_above_rating(root_directory):
                             }
                             tracks_above_rating.append(track_info)
                             console.clear()
-                            console.print(track_info)
+                            console.print(get_panel(track_info))
                         progress.advance(task)
-
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
                         progress.advance(task)
     return tracks_above_rating
 
+def get_panel(track_info):
+    stars = "⭐" * floor(track_info["rating"] / 20)
+    content = f"🎵 {track_info['title']}\n" + \
+              f"📀 {track_info['album']}\n" + \
+              f"👤 {track_info['artist']}\n" + \
+              f"{stars}"
+    panel = Panel(content)
+    return panel
 
 if __name__ == "__main__":
     # Load the cache JSON file.
@@ -70,4 +79,4 @@ if __name__ == "__main__":
 
     tracks_above_rating = get_tracks_above_rating(cache["directory"])
     for track in tracks_above_rating:
-        print(track)
+        print(get_panel(track))
