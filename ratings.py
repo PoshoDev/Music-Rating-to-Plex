@@ -15,10 +15,8 @@ console = Console()
 
 def get_tracks_above_rating(root_directory):
     tracks_above_rating = []
-
     # Get total number of files to process
     total_files = sum(len(files) for _, _, files in os.walk(root_directory))
-
     with Progress(console=console) as progress:
         task = progress.add_task("[green]Processing...", total=total_files)
         for dirpath, _, filenames in os.walk(root_directory):
@@ -38,9 +36,10 @@ def get_tracks_above_rating(root_directory):
                             tracks_above_rating.append(track_info)
                             console.clear()
                             console.print(get_panel(track_info))
+                        progress.advance(task)
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
-                    progress.advance(task)
+                        progress.advance(task)
     return tracks_above_rating
 
 def update_plex_ratings(tracks, plex_url, plex_token, library_id, plex_user):
@@ -48,19 +47,24 @@ def update_plex_ratings(tracks, plex_url, plex_token, library_id, plex_user):
     errors = []
     with Progress(console=console) as progress:
         task = progress.add_task("[green]Updating Plex...", total=len(tracks))
+        library = plex.library.section(library_id)
         for track in tracks:
-            try:
-                plex_track = plex.library.sectionByID(library_id).search(title=track["title"], album=track["album"], artist=track["artist"])[0]
-                console.print(f"Found track {track['title']} by {track['artist']}")
-            except Exception as e:
-                errors.append(f"Error finding track {track['title']} by {track['artist']}: {e}")
-            try:
-                plex_track.rate(track["rating"], plex_user)
-                console.print(f"Rated track {track['title']} by {track['artist']} as {track['rating']}")
-            except Exception as e:
-                errors.append(f"Error rating track {track['title']} by {track['artist']}: {e}")
+            search = library.search(filters={
+                "track.title": track["title"],
+                "album.title": track["album"],
+                "artist.title": track["artist"]
+            })
+            if not search:
+                console.print(f"Could not find track {track['title']} by {track['artist']}")
+                continue
+            plex_track = search[0]
+            console.print(f"Found track {track['title']} by {track['artist']}")
+            rating = floor(track["rating"] / 10)
+            console.print(f"Current rating: {plex_track.userRating}")
+            plex_track.rate(rating)
+            console.print(f"New rating: {plex_track.userRating}")
+            console.print(f"Rated track {track['title']} by {track['artist']} as {rating}")
             progress.advance(task)
-
 
 def get_panel(track_info):
     stars = "⭐" * floor(track_info["rating"] / 20)
@@ -74,7 +78,7 @@ def get_panel(track_info):
 if __name__ == "__main__":
     # Load the cache JSON file.
     if os.path.exists("cache.json"):
-        with open("cache.json", "r") as cache_file:
+        with open("cache.json", "r", encoding="utf-8") as cache_file:
             cache = json.load(cache_file)
     else:
         cache = {}
@@ -96,9 +100,9 @@ if __name__ == "__main__":
         cache["token"] = input("Enter your Plex token: ")
         changes = True
 
-    # Get the Plex library ID from the cache, or ask the user for it.
-    if "library_id" not in cache:
-        cache["library_id"] = input("Enter your Plex library ID: ")
+    # Get the Plex library from the cache, or ask the user for it.
+    if "library" not in cache:
+        cache["library"] = input("Enter your Plex library: ")
         changes = True
 
     # Get the Plex user ID from the cache, or ask the user for it.
@@ -115,5 +119,5 @@ if __name__ == "__main__":
     tracks_above_rating = get_tracks_above_rating(cache["directory"])
     """for track in tracks_above_rating:
         print(get_panel(track))"""
-    update_plex_ratings(tracks_above_rating, cache["url"], cache["token"], cache["library_id"], cache["user_id"])
+    update_plex_ratings(tracks_above_rating, cache["url"], cache["token"], cache["library"], cache["user_id"])
     
