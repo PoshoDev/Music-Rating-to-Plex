@@ -1,40 +1,44 @@
 import os
 import json
 import mutagen
+from rich.console import Console
+from rich.progress import Progress
 from rich import print
 
 MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
 
+console = Console()
+
 def get_tracks_above_rating(root_directory):
     tracks_above_rating = []
+
+    # Get total number of files to process
     total_files = sum(len(files) for _, _, files in os.walk(root_directory))
-    processed_files = 0
 
-    for dirpath, _, filenames in os.walk(root_directory):
-        for filename in filenames:
-            if os.path.splitext(filename)[1] in MUSIC_FORMATS:
-                file_path = os.path.join(dirpath, filename)
-                try:
-                    track = mutagen.File(file_path)
-                    rating = track.get("rating")
-                    if rating is not None and int(rating[0]) > 0:
-                        track_info = {}
-                        if track.get("title") is not None:
-                            track_info["title"] = track.get("title")[0]
-                        if track.get("album") is not None:
-                            track_info["album"] = track.get("album")[0]
-                        if track.get("artist") is not None:
-                            track_info["artist"] = track.get("artist")[0]
-                        if track.get("rating") is not None:
-                            track_info["rating"] = int(track.get("rating")[0])
-                        tracks_above_rating.append(track_info)
-                        processed_files += 1
-                        progress = int((processed_files / total_files) * 100)
-                        print(f"Processed {processed_files} of {total_files} files. Progress: {progress}%")
-                        print(track_info)
-                except Exception as e:
-                    print(f"Error processing file {file_path}: {e}")
+    with Progress(console=console) as progress:
+        task = progress.add_task("[green]Processing...", total=total_files)
+        for dirpath, _, filenames in os.walk(root_directory):
+            for filename in filenames:
+                if os.path.splitext(filename)[1] in MUSIC_FORMATS:
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        track = mutagen.File(file_path)
+                        rating = track.get("rating")
+                        if rating is not None and int(rating[0]) > 0:
+                            track_info = {
+                                "title": track.get("title")[0] if track.get("title") is not None else "",
+                                "album": track.get("album")[0] if track.get("album") is not None else "",
+                                "artist": track.get("artist")[0] if track.get("artist") is not None else "",
+                                "rating": int(rating[0])
+                            }
+                            tracks_above_rating.append(track_info)
+                            console.clear()
+                            console.print(track_info)
+                        progress.advance(task)
 
+                    except Exception as e:
+                        print(f"Error processing file {file_path}: {e}")
+                        progress.advance(task)
     return tracks_above_rating
 
 
