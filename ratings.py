@@ -7,6 +7,8 @@ MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
 
 def get_tracks_above_rating(root_directory):
     tracks_above_rating = []
+    total_files = sum(len(files) for _, _, files in os.walk(root_directory))
+    processed_files = 0
 
     for dirpath, _, filenames in os.walk(root_directory):
         for filename in filenames:
@@ -26,11 +28,15 @@ def get_tracks_above_rating(root_directory):
                         if track.get("rating") is not None:
                             track_info["rating"] = int(track.get("rating")[0])
                         tracks_above_rating.append(track_info)
+                        processed_files += 1
+                        progress = int((processed_files / total_files) * 100)
+                        print(f"Processed {processed_files} of {total_files} files. Progress: {progress}%")
                         print(track_info)
                 except Exception as e:
                     print(f"Error processing file {file_path}: {e}")
 
     return tracks_above_rating
+
 
 if __name__ == "__main__":
     # Load the cache JSON file.
