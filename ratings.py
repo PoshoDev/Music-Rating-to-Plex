@@ -9,7 +9,7 @@ from rich.table import Table
 from rich import print
 from plexapi.server import PlexServer
 
-MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
+MUSIC_FORMATS = ('.mp3', '.ogg', '.flac', '.m4a', '.wav')
 
 def sync_ratings(console, library, root_directory):
     # Get total number of files to process
@@ -50,12 +50,14 @@ def sync_ratings(console, library, root_directory):
                                 console.clear()
                                 console.print(get_panel(track_info))
                             else:
+                                track_info["error"] = "Track not found!"
                                 failed_tracks.append(track_info)
                                 console.clear()
                                 console.print(get_panel(track_info, "Track not found!"))
                         progress.advance(task)
                     except Exception as e:
-                        print(f"Error processing file {file_path}: {e}")
+                        track_info["error"] = str(e)
+                        failed_tracks.append(track_info)
                         progress.advance(task)
     return failed_tracks
 
@@ -109,12 +111,19 @@ def get_stars(rating):
 def failed_table(console, failed_tracks):
     console.clear()
     table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("👤 Artist", style="dim")
-    table.add_column("📀 Album", style="dim")
-    table.add_column("🎵 Title", style="dim")
-    table.add_column("⭐ Rating", style="dim")
+    table.add_column("👤 Artist")
+    table.add_column("📀 Album")
+    table.add_column("🎵 Title")
+    table.add_column("⭐ Rating")
+    table.add_column("❌ Error")
     for track in failed_tracks:
-        table.add_row(track["artist"], track["album"], track["title"], get_stars(track["rating"]))
+        table.add_row(
+            track["artist"],
+            track["album"],
+            track["title"],
+            get_stars(track["rating"]),
+            track["error"]
+        )
     console.print("[blink]The following tracks could not be found in Plex:")
     console.print(table)
     console.print(f"[blink]Total: {len(failed_tracks)} track(s)")
