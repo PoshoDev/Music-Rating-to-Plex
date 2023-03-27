@@ -5,19 +5,16 @@ import mutagen
 from rich.console import Console
 from rich.progress import Progress
 from rich.panel import Panel
+from rich.table import Table
 from rich import print
 from plexapi.server import PlexServer
 
-
 MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
 
-
-
-def sync_ratings(library, root_directory):
+def sync_ratings(console, library, root_directory):
     # Get total number of files to process
     total_files = sum(len(files) for _, _, files in os.walk(root_directory))
     # Start task.
-    console = Console()
     failed_tracks = []
     with Progress(console=console) as progress:
         task = progress.add_task("[green]Processing...", total=total_files)
@@ -52,8 +49,6 @@ def sync_ratings(library, root_directory):
                                 song.rate(rating)
                                 console.clear()
                                 console.print(get_panel(track_info))
-                                console.print(rating)
-                                console.print(song)
                             else:
                                 failed_tracks.append(track_info)
                                 console.clear()
@@ -62,82 +57,75 @@ def sync_ratings(library, root_directory):
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
                         progress.advance(task)
-"""
-def update_plex_ratings(tracks, plex_url, plex_token, library_id, plex_user):
-    plex = PlexServer(plex_url, plex_token)
-    errors = []
-    with Progress(console=console) as progress:
-        task = progress.add_task("[green]Updating Plex...", total=len(tracks))
-        library = plex.library.section(library_id)
-        for track in tracks:
-            search = library.search(filters={
-                "track.title": track["title"],
-                "album.title": track["album"],
-                "artist.title": track["artist"]
-            })
-            if not search:
-                console.print(f"Could not find track {track['title']} by {track['artist']}")
-                continue
-            plex_track = search[0]
-            console.print(f"Found track {track['title']} by {track['artist']}")
-            rating = floor(track["rating"] / 10)
-            console.print(f"Current rating: {plex_track.userRating}")
-            plex_track.rate(rating)
-            console.print(f"New rating: {plex_track.userRating}")
-            console.print(f"Rated track {track['title']} by {track['artist']} as {rating}")
-            progress.advance(task)"""
+    return failed_tracks
 
 def get_panel(track_info, error=""):
-    stars = "⭐" * floor(track_info["rating"] / 20)
     content = f"🎵 {track_info['title']}\n" + \
               f"📀 {track_info['album']}\n" + \
               f"👤 {track_info['artist']}\n" + \
-              f"{stars}"
+              f"{get_stars(track_info['rating'])}"
     panel = Panel(
         content,
         style="gold1" if not error else "red",
         title="Rating Synced!" if not error else error,
+        title_align="left"
     )
     return panel
 
-if __name__ == "__main__":
+def load_cache():
     # Load the cache JSON file.
     if os.path.exists("cache.json"):
         with open("cache.json", "r", encoding="utf-8") as cache_file:
             cache = json.load(cache_file)
     else:
         cache = {}
-    
     changes = False
-
     # Get the directory from the cache, or ask the user for it.
     if "directory" not in cache:
         cache["directory"] = input("Enter the directory to search: ")
         changes = True
-
     # Get the Plex URL from the cache, or ask the user for it.
     if "url" not in cache:
         cache["url"] = input("Enter your Plex URL: ")
         changes = True
-
     # Get the Plex token from the cache, or ask the user for it.
     if "token" not in cache:
         cache["token"] = input("Enter your Plex token: ")
         changes = True
-
     # Get the Plex library from the cache, or ask the user for it.
     if "library" not in cache:
         cache["library"] = input("Enter your Plex library: ")
         changes = True
-
     # Save the cache.
     if changes:
         with open("cache.json", "w") as cache_file:
             json.dump(cache, cache_file)
-    
+    return cache
+
+def get_stars(rating):
+    stars = "⭐" * floor(rating / 20)
+    return stars
+
+def failed_table(console, failed_tracks):
+    console.clear()
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("👤 Artist", style="dim")
+    table.add_column("📀 Album", style="dim")
+    table.add_column("🎵 Title", style="dim")
+    table.add_column("⭐ Rating", style="dim")
+    for track in failed_tracks:
+        table.add_row(track["artist"], track["album"], track["title"], get_stars(track["rating"]))
+    console.print("[blink]The following tracks could not be found in Plex:")
+    console.print(table)
+    console.print(f"[blink]Total: {len(failed_tracks)} track(s)")
+
+if __name__ == "__main__":
+    cache = load_cache()
     # Plex stuff.
     plex = PlexServer(cache["url"], cache["token"])
     library = plex.library.section(cache["library"])
-
-    sync_ratings(library, cache["directory"])
-    
+    console = Console()
+    if failed_tracks := sync_ratings(console, library, cache["directory"]):
+        failed_table(console, failed_tracks)
+    else:
+        console.print("[blink]All track ratings synced successfully!")
