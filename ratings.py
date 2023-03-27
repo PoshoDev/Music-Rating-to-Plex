@@ -11,12 +11,14 @@ from plexapi.server import PlexServer
 
 MUSIC_FORMATS = ['.mp3', '.flac', '.aac']
 
-console = Console()
 
-def get_tracks_above_rating(root_directory):
-    tracks_above_rating = []
+
+def sync_ratings(library, root_directory):
     # Get total number of files to process
     total_files = sum(len(files) for _, _, files in os.walk(root_directory))
+    # Start task.
+    console = Console()
+    failed_tracks = []
     with Progress(console=console) as progress:
         task = progress.add_task("[green]Processing...", total=total_files)
         for dirpath, _, filenames in os.walk(root_directory):
@@ -27,21 +29,40 @@ def get_tracks_above_rating(root_directory):
                         track = mutagen.File(file_path)
                         rating = track.get("rating")
                         if rating is not None and int(rating[0]) > 0:
+                            # Fetch the track info.
                             track_info = {
                                 "title": track.get("title")[0] if track.get("title") is not None else "",
                                 "album": track.get("album")[0] if track.get("album") is not None else "",
                                 "artist": track.get("artist")[0] if track.get("artist") is not None else "",
                                 "rating": int(rating[0])
                             }
-                            tracks_above_rating.append(track_info)
-                            console.clear()
-                            console.print(get_panel(track_info))
+                            # Find the track in Plex.
+                            results = library.searchTracks(
+                                filters={
+                                    "track.title": track_info["title"],
+                                    "album.title": track_info["album"],
+                                    "artist.title": track_info["artist"]
+                                },
+                                maxresults=1
+                            )
+                            if results:
+                                song = results[0]
+                                # Rate the track.
+                                rating = floor(track_info["rating"] / 10)
+                                song.rate(rating)
+                                console.clear()
+                                console.print(get_panel(track_info))
+                                console.print(rating)
+                                console.print(song)
+                            else:
+                                failed_tracks.append(track_info)
+                                console.clear()
+                                console.print(get_panel(track_info, "Track not found!"))
                         progress.advance(task)
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
                         progress.advance(task)
-    return tracks_above_rating
-
+"""
 def update_plex_ratings(tracks, plex_url, plex_token, library_id, plex_user):
     plex = PlexServer(plex_url, plex_token)
     errors = []
@@ -64,15 +85,19 @@ def update_plex_ratings(tracks, plex_url, plex_token, library_id, plex_user):
             plex_track.rate(rating)
             console.print(f"New rating: {plex_track.userRating}")
             console.print(f"Rated track {track['title']} by {track['artist']} as {rating}")
-            progress.advance(task)
+            progress.advance(task)"""
 
-def get_panel(track_info):
+def get_panel(track_info, error=""):
     stars = "⭐" * floor(track_info["rating"] / 20)
     content = f"🎵 {track_info['title']}\n" + \
               f"📀 {track_info['album']}\n" + \
               f"👤 {track_info['artist']}\n" + \
               f"{stars}"
-    panel = Panel(content)
+    panel = Panel(
+        content,
+        style="gold1" if not error else "red",
+        title="Rating Synced!" if not error else error,
+    )
     return panel
 
 if __name__ == "__main__":
@@ -105,19 +130,14 @@ if __name__ == "__main__":
         cache["library"] = input("Enter your Plex library: ")
         changes = True
 
-    # Get the Plex user ID from the cache, or ask the user for it.
-    if "user_id" not in cache:
-        cache["user_id"] = input("Enter your Plex user ID: ")
-        changes = True
-
     # Save the cache.
     if changes:
         with open("cache.json", "w") as cache_file:
             json.dump(cache, cache_file)
     
+    # Plex stuff.
+    plex = PlexServer(cache["url"], cache["token"])
+    library = plex.library.section(cache["library"])
 
-    tracks_above_rating = get_tracks_above_rating(cache["directory"])
-    """for track in tracks_above_rating:
-        print(get_panel(track))"""
-    update_plex_ratings(tracks_above_rating, cache["url"], cache["token"], cache["library"], cache["user_id"])
+    sync_ratings(library, cache["directory"])
     

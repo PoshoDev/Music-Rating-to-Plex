@@ -19,17 +19,6 @@ library = plex.library.section(library_name)
 print(library)
 
 # Search for the song using the specified parameters
-"""results = plex.search(
-    query=track_name,
-    artist=artist_name,
-    album=album_name,
-    track=track_name
-)"""
-"""results = library.search(filters={
-    "track.title": track_name,
-    "album.title": album_name,
-    "artist.title": artist_name
-})"""
 results = library.searchTracks(filters={
     "track.title": track_name,
     "album.title": album_name,
