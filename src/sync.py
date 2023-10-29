@@ -24,14 +24,10 @@ def sync_ratings(console, library, root_directory):
                     try:
                         track = mutagen.File(file_path)
                         rating = track.get("rating")
+                        track_info = get_track_info(track)
                         if rating is not None and int(rating[0]) > 0:
                             # Fetch the track info.
-                            track_info = {
-                                "title": track.get("title")[0] if track.get("title") is not None else "",
-                                "album": track.get("album")[0] if track.get("album") is not None else "",
-                                "artist": track.get("artist")[0] if track.get("artist") is not None else "",
-                                "rating": int(rating[0])
-                            }
+                            track_info = get_track_info(track)
                             # Find the track in Plex.
                             results = library.searchTracks(
                                 filters={
@@ -53,9 +49,19 @@ def sync_ratings(console, library, root_directory):
                                 failed_tracks.append(track_info)
                                 console.clear()
                                 console.print(get_panel(track_info, "Track not found!"))
+                        else:
+                            log_write(f"No rating for: {track_info['title']}")
                         progress.advance(task)
                     except Exception as e:
                         track_info["error"] = str(e)
                         failed_tracks.append(track_info)
                         progress.advance(task)
     return failed_tracks
+
+def get_track_info(track):
+    return {
+        "title": track.get("title")[0] if track.get("title") is not None else "",
+        "album": track.get("album")[0] if track.get("album") is not None else "",
+        "artist": track.get("artist")[0] if track.get("artist") is not None else "",
+        "rating": int(track.get("rating")[0])
+    }
