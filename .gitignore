@@ -1,5 +1,7 @@
 cache.json
 temp
+log.txt
+*.mp3
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
