@@ -2,6 +2,7 @@ import os
 from math import floor
 import mutagen
 from mutagen.id3 import ID3
+from mutagen.easyid3 import EasyID3
 from rich.progress import Progress
 from .logging import log_write, log_error
 from .printing import get_panel
