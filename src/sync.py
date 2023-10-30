@@ -59,26 +59,3 @@ def search_match(library, track_info):
         },
         maxresults=1
     )
-
-def get_track_info(file_path, rating):
-    track = mutagen.File(file_path)
-    return {
-        "title": track.get("title"),
-        "album": track.get("album"),
-        "artist": track.get("artist"),
-        "rating": rating
-    }
-
-def get_stars(file_path):
-    # Get the track stuff.
-    try:
-        audio = ID3(file_path)
-    except Exception as e:
-        log_error(str(e))
-        return None
-    # Get the rating as stars.
-    try:
-        rating = audio.getall("POPM")[0].rating
-        return round((rating / 255) * 5)
-    except IndexError:
-        return 0
