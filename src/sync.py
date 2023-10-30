@@ -6,6 +6,7 @@ from mutagen.easyid3 import EasyID3
 from rich.progress import Progress
 from .logging import log_write, log_error
 from .printing import get_panel
+from .info import get_track_info
 
 
 MUSIC_FORMATS = ('.mp3', '.ogg', '.flac', '.m4a', '.wav')
@@ -23,18 +24,18 @@ def sync_ratings(console, library, root_directory):
                 log_write(f"- {filename}")
                 if os.path.splitext(filename)[1] in MUSIC_FORMATS:
                     file_path = os.path.join(dirpath, filename)
-                    stars = get_stars(file_path)
-                    if stars == None:
+                    track_info = get_track_info(file_path)
+                    if track_info["stars"] == None:
+                        log_error(f"GOT NONE: {file_path}")
+                    elif track_info["stars"] == 0:
                         continue
-                    track_info = get_track_info(file_path, stars)
                     try:
-                        if stars:
-                            if not attempt_sync(library, track_info, stars):
-                                console.clear()
-                                console.print(get_panel(track_info, "Track not found!"))
-                            else:
-                                console.clear()
-                                console.print(get_panel(track_info))
+                        if not attempt_sync(library, track_info):
+                            console.clear()
+                            console.print(get_panel(track_info, "Track not found!"))
+                        else:
+                            console.clear()
+                            console.print(get_panel(track_info))
                         progress.advance(task)
                     except Exception as e:
                         track_info["error"] = str(e)
@@ -42,11 +43,11 @@ def sync_ratings(console, library, root_directory):
                         progress.advance(task)
     return failed_tracks
 
-def attempt_sync(library, track_info, stars):
+def attempt_sync(library, track_info):
     results = search_match(library, track_info)
     if not results:
         return False
-    results[0].rate(stars * 2)
+    results[0].rate(track_info["stars"] * 2)
     return True
 
 

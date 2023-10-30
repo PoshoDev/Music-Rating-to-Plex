@@ -14,10 +14,12 @@ def get_track_info(file_path):
 def get_track_info_tags(file_path):
     # Method 1
     info = get_tags(mutagen.File(file_path))
+    print(info)
     if info["title"]:
         return info
     # Method 2
     info = get_tags(EasyID3(file_path))
+    print(info)
     return info
 
 def get_tags(track_obj):
@@ -52,4 +54,5 @@ def get_stars(file_path):
     # File doesn't start with ID3.
     except Exception as e:
         log_error(str(e))
-        return None
+        #return None
+        return 0
