@@ -2,6 +2,7 @@ cache.json
 temp
 log.txt
 errors.txt
+success.txt
 *.mp3
 *.flac
 *.m4a

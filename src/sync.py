@@ -4,7 +4,7 @@ import mutagen
 from mutagen.id3 import ID3
 from mutagen.easyid3 import EasyID3
 from rich.progress import Progress
-from .logging import log_write, log_error
+from .logging import log_write, log_error, log_success
 from .printing import get_panel
 from .info import get_track_info
 
@@ -25,8 +25,10 @@ def sync_ratings(console, library, root_directory):
                 if os.path.splitext(filename)[1] in MUSIC_FORMATS:
                     file_path = os.path.join(dirpath, filename)
                     track_info = get_track_info(file_path)
+                    if track_info == None:
+                        continue
                     if track_info["stars"] == None:
-                        log_error(f"GOT NONE: {file_path}")
+                        log_error(f"[ERROR] NONE STARS: {file_path}")
                     elif track_info["stars"] == 0:
                         continue
                     try:
@@ -46,8 +48,10 @@ def sync_ratings(console, library, root_directory):
 def attempt_sync(library, track_info):
     results = search_match(library, track_info)
     if not results:
+        log_error(f"NO MATCH: {track_info['title']}")
         return False
     results[0].rate(track_info["stars"] * 2)
+    log_success(f"SYNC SUCCESS: {track_info['title']}")
     return True
 
 

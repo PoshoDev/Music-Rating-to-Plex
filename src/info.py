@@ -5,7 +5,7 @@ from .logging import log_error
 
 def get_track_info(file_path):
     info = get_track_info_tags(file_path)
-    if not info.get("stars", None):
+    if info and not info.get("stars", None):
         info["stars"] = get_stars(file_path)
     return info
 
@@ -18,9 +18,13 @@ def get_track_info_tags(file_path):
     if info["title"]:
         return info
     # Method 2
-    info = get_tags(EasyID3(file_path))
-    print(info)
-    return info
+    try:
+        info = get_tags(EasyID3(file_path))
+        print(info)
+        return info
+    except:
+        log_error(f"UNSUPPORTED: {file_path}")
+        return None
 
 def get_tags(track_obj):
     tags = {
@@ -53,6 +57,6 @@ def get_stars(file_path):
             return 0
     # File doesn't start with ID3.
     except Exception as e:
-        log_error(str(e))
+        #log_error(str(e))
         #return None
         return 0

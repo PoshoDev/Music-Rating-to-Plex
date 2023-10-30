@@ -14,7 +14,8 @@ files = [
     "06 - Conflicted.mp3",
     "1-01 - Steven Universe Future (feat. Zach Callison, Deedee Magno Hall, Estelle, Michaela Dietz, Shelby Rabara, Rebecca Sugar & aivi & sur.flac",
     "1-02 - Happy Welcome Back Day (feat. aivi & surasshu) (Title Card).flac",
-    "1-61 - I'd Rather Be Me (With You) (feat. Zach Callison & Rebecca Sugar).flac"
+    "1-61 - I'd Rather Be Me (With You) (feat. Zach Callison & Rebecca Sugar).flac",
+    "1-01 - Scott Pilgrim Anthem.m4a"
 ]
 
 log_remove()
