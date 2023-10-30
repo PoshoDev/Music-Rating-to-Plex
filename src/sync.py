@@ -1,15 +1,16 @@
 import os
 from math import floor
 import mutagen
+from mutagen.id3 import ID3
 from rich.progress import Progress
-from .logging import log_write
+from .logging import log_write, log_error
 from .printing import get_panel
 
 
 MUSIC_FORMATS = ('.mp3', '.ogg', '.flac', '.m4a', '.wav')
 
 def sync_ratings(console, library, root_directory):
-    # Get total number of files to process
+    # Get total number of files to process.
     total_files = sum(len(files) for _, _, files in os.walk(root_directory))
     # Start task.
     failed_tracks = []
@@ -21,36 +22,18 @@ def sync_ratings(console, library, root_directory):
                 log_write(f"- {filename}")
                 if os.path.splitext(filename)[1] in MUSIC_FORMATS:
                     file_path = os.path.join(dirpath, filename)
+                    stars = get_stars(file_path)
+                    if stars == None:
+                        continue
+                    track_info = get_track_info(file_path, stars)
                     try:
-                        track = mutagen.File(file_path)
-                        rating = track.get("rating")
-                        track_info = get_track_info(track)
-                        if rating is not None and int(rating[0]) > 0:
-                            # Fetch the track info.
-                            track_info = get_track_info(track)
-                            # Find the track in Plex.
-                            results = library.searchTracks(
-                                filters={
-                                    "track.title": track_info["title"],
-                                    "album.title": track_info["album"],
-                                    "artist.title": track_info["artist"]
-                                },
-                                maxresults=1
-                            )
-                            if results:
-                                song = results[0]
-                                # Rate the track.
-                                rating = floor(track_info["rating"] / 10)
-                                song.rate(rating)
-                                console.clear()
-                                console.print(get_panel(track_info))
-                            else:
-                                track_info["error"] = "Track not found!"
-                                failed_tracks.append(track_info)
+                        if stars:
+                            if not attempt_sync(library, track_info, stars):
                                 console.clear()
                                 console.print(get_panel(track_info, "Track not found!"))
-                        else:
-                            log_write(f"No rating for: {track_info['title']}")
+                            else:
+                                console.clear()
+                                console.print(get_panel(track_info))
                         progress.advance(task)
                     except Exception as e:
                         track_info["error"] = str(e)
@@ -58,10 +41,43 @@ def sync_ratings(console, library, root_directory):
                         progress.advance(task)
     return failed_tracks
 
-def get_track_info(track):
+def attempt_sync(library, track_info, stars):
+    results = search_match(library, track_info)
+    if not results:
+        return False
+    results[0].rate(stars * 2)
+    return True
+
+
+def search_match(library, track_info):
+    return library.searchTracks(
+        filters={
+            "track.title": track_info["title"],
+            "album.title": track_info["album"],
+            "artist.title": track_info["artist"]
+        },
+        maxresults=1
+    )
+
+def get_track_info(file_path, rating):
+    track = mutagen.File(file_path)
     return {
-        "title": track.get("title")[0] if track.get("title") is not None else "",
-        "album": track.get("album")[0] if track.get("album") is not None else "",
-        "artist": track.get("artist")[0] if track.get("artist") is not None else "",
-        "rating": int(track.get("rating")[0])
+        "title": track.get("title"),
+        "album": track.get("album"),
+        "artist": track.get("artist"),
+        "rating": rating
     }
+
+def get_stars(file_path):
+    # Get the track stuff.
+    try:
+        audio = ID3(file_path)
+    except Exception as e:
+        log_error(str(e))
+        return None
+    # Get the rating as stars.
+    try:
+        rating = audio.getall("POPM")[0].rating
+        return round((rating / 255) * 5)
+    except IndexError:
+        return 0
