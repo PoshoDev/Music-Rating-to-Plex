@@ -192,6 +192,7 @@ def main():
     with_rating = 0
     track_cache = {}
     interrupted = False
+    matched_rows = []
 
     try:
         with Progress(console=console) as progress:
@@ -244,9 +245,12 @@ def main():
                             continue
                     log_verbose(f"Matched Plex track: {track.title} ({shorten(norm)})")
 
+                    artist = getattr(track, "grandparentTitle", "") or ""
+                    album = getattr(track, "parentTitle", "") or ""
                     current = getattr(track, "userRating", None)
                     if current == rating:
                         log_verbose(f"Already up to date: {track.title} ({shorten(norm)})")
+                        matched_rows.append((track.title, artist, album, rating, current, False))
                         update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
 
@@ -256,6 +260,7 @@ def main():
                         f"[dim]{shorten(norm)}[/] "
                         f"[yellow]{current} → {rating}[/]"
                     )
+                    matched_rows.append((track.title, artist, album, rating, current, True))
 
                     if not DRY_RUN:
                         track.rate(float(rating))
@@ -265,6 +270,28 @@ def main():
         interrupted = True
         console.print("\n[yellow]Interrupted by user. Partial results:[/]")
 
+    if matched_rows:
+        updated_table = Table(title="Matched Tracks", show_header=True, header_style="bold green")
+        updated_table.add_column("👤 Artist")
+        updated_table.add_column("📀 Album")
+        updated_table.add_column("🎵 Track")
+        updated_table.add_column("🐝 MusicBee")
+        updated_table.add_column("⭐ Plex")
+        updated_table.add_column("📝 Updating?")
+        for title, artist, album, mb_rating, plex_rating, updating in matched_rows:
+            row_style = "dim" if not updating else None
+            updated_table.add_row(
+                str(artist),
+                str(album),
+                str(title),
+                str(mb_rating),
+                str(plex_rating),
+                "YES" if updating else "NO",
+                style=row_style,
+            )
+        console.print(updated_table)
+    else:
+        console.print("[yellow]No tracks matched[/]")
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
     table.add_column("Metric")
