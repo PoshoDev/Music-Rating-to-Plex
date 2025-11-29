@@ -21,6 +21,7 @@ LIBRARY_NAME = os.getenv("PLEX_LIBRARY")
 MUSIC_ROOT = Path(os.getenv("PATH_LIBRARY"))
 INDEX_CACHE_FILE = Path(__file__).with_name("plex_path_index.json")
 DRY_RUN = True
+VERBOSE = True
 
 POPM_TO_STARS = {
     0: 0.0, 13: 0.5, 1: 1.0, 54: 1.5, 64: 2.0,
@@ -99,6 +100,21 @@ def save_cached_index(cache_file: Path, index: dict):
     except Exception as exc:
         console.print(f"[red]Failed to save Plex index:[/] {exc}")
 
+def log_verbose(message: str):
+    if VERBOSE:
+        console.print(f"[dim]{message}[/]")
+
+def update_verbose_progress(progress: Progress, task_id: int, with_rating: int, matched: int, updated: int):
+    if not VERBOSE:
+        return
+    progress.update(
+        task_id,
+        description=(
+            f"[blue]Processing files...[/] "
+            f"rated:{with_rating} matched:{matched} updated:{updated}"
+        ),
+    )
+
 def main():
     console.print(f"[bold cyan]Connecting to Plex at[/] {BASE_URL}")
     plex = PlexServer(BASE_URL, TOKEN)
@@ -122,6 +138,7 @@ def main():
 
     with Progress(console=console) as progress:
         task = progress.add_task("[blue]Processing files...", total=total_audio)
+        update_verbose_progress(progress, task, with_rating, matched, updated)
 
         # store the live status object
         with console.status("[dim]Starting...[/]", spinner="dots") as status:
@@ -140,12 +157,15 @@ def main():
 
                 rating = get_musicbee_rating_for_file(file_path)
                 if rating is None:
+                    update_verbose_progress(progress, task, with_rating, matched, updated)
                     continue
                 with_rating += 1
 
                 norm = os.path.normpath(str(file_path))
                 rating_key = plex_index.get(norm)
                 if not rating_key:
+                    log_verbose(f"No Plex match for rated file: {shorten(norm)}")
+                    update_verbose_progress(progress, task, with_rating, matched, updated)
                     continue
                 matched += 1
 
@@ -158,10 +178,13 @@ def main():
                         console.print(
                             f"[red]Failed to fetch track[/] [dim]{shorten(norm)}[/]: {exc}"
                         )
+                        update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
 
                 current = getattr(track, "userRating", None)
                 if current == rating:
+                    log_verbose(f"Already up to date: {track.title} ({shorten(norm)})")
+                    update_verbose_progress(progress, task, with_rating, matched, updated)
                     continue
 
                 updated += 1
@@ -174,6 +197,7 @@ def main():
                 if not DRY_RUN:
                     track.rate(float(rating))
 
+                update_verbose_progress(progress, task, with_rating, matched, updated)
 
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
