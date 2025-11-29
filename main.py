@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import signal
 from pathlib import Path
 
 from rich import print
@@ -22,6 +23,7 @@ MUSIC_ROOT = Path(os.getenv("PATH_LIBRARY"))
 INDEX_CACHE_FILE = Path(__file__).with_name("plex_path_index.json")
 DRY_RUN = True
 VERBOSE = True
+STOP_REQUESTED = False
 
 POPM_TO_STARS = {
     0: 0.0, 13: 0.5, 1: 1.0, 54: 1.5, 64: 2.0,
@@ -78,6 +80,8 @@ def get_musicbee_rating_for_file(path: Path):
 def build_plex_path_index(music_section):
     index = {}
     for track in music_section.all(libtype="track"):
+        if STOP_REQUESTED:
+            break
         for loc in track.locations:
             index[os.path.normpath(loc)] = track.ratingKey
     return index
@@ -100,6 +104,12 @@ def save_cached_index(cache_file: Path, index: dict):
     except Exception as exc:
         console.print(f"[red]Failed to save Plex index:[/] {exc}")
 
+def handle_stop_signal(signum, frame):
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
+    console.print("\n[yellow]Ctrl+C detected, stopping...[/]")
+    raise KeyboardInterrupt()
+
 def log_verbose(message: str):
     if VERBOSE:
         console.print(f"[dim]{message}[/]")
@@ -116,6 +126,9 @@ def update_verbose_progress(progress: Progress, task_id: int, with_rating: int, 
     )
 
 def main():
+    signal.signal(signal.SIGINT, handle_stop_signal)
+    signal.signal(signal.SIGTERM, handle_stop_signal)
+
     console.print(f"[bold cyan]Connecting to Plex at[/] {BASE_URL}")
     plex = PlexServer(BASE_URL, TOKEN)
     music = plex.library.section(LIBRARY_NAME)
@@ -135,69 +148,77 @@ def main():
     matched = 0
     with_rating = 0
     track_cache = {}
+    interrupted = False
 
-    with Progress(console=console) as progress:
-        task = progress.add_task("[blue]Processing files...", total=total_audio)
-        update_verbose_progress(progress, task, with_rating, matched, updated)
+    try:
+        with Progress(console=console) as progress:
+            task = progress.add_task("[blue]Processing files...", total=total_audio)
+            update_verbose_progress(progress, task, with_rating, matched, updated)
 
-        # store the live status object
-        with console.status("[dim]Starting...[/]", spinner="dots") as status:
+            # store the live status object
+            with console.status("[dim]Starting...[/]", spinner="dots") as status:
 
-            for file_path in MUSIC_ROOT.rglob("*"):
+                for file_path in MUSIC_ROOT.rglob("*"):
+                    if STOP_REQUESTED:
+                        interrupted = True
+                        break
 
-                # live-updating "Checking ..." line
-                status.update(
-                    f"[dim]Checking[/] [cyan]{shorten(str(file_path))}[/]"
-                )
+                    # live-updating "Checking ..." line
+                    status.update(
+                        f"[dim]Checking[/] [cyan]{shorten(str(file_path))}[/]"
+                    )
 
-                if file_path.suffix.lower() not in (".mp3", ".flac", ".ogg"):
-                    continue
+                    if file_path.suffix.lower() not in (".mp3", ".flac", ".ogg"):
+                        continue
 
-                progress.advance(task)
+                    progress.advance(task)
 
-                rating = get_musicbee_rating_for_file(file_path)
-                if rating is None:
-                    update_verbose_progress(progress, task, with_rating, matched, updated)
-                    continue
-                with_rating += 1
+                    rating = get_musicbee_rating_for_file(file_path)
+                    if rating is None:
+                        update_verbose_progress(progress, task, with_rating, matched, updated)
+                        continue
+                    with_rating += 1
 
-                norm = os.path.normpath(str(file_path))
-                rating_key = plex_index.get(norm)
-                if not rating_key:
-                    log_verbose(f"No Plex match for rated file: {shorten(norm)}")
-                    update_verbose_progress(progress, task, with_rating, matched, updated)
-                    continue
-                matched += 1
+                    norm = os.path.normpath(str(file_path))
+                    rating_key = plex_index.get(norm)
+                    if not rating_key:
+                        log_verbose(f"No Plex match for rated file: {shorten(norm)}")
+                        update_verbose_progress(progress, task, with_rating, matched, updated)
+                        continue
+                    matched += 1
 
-                track = track_cache.get(rating_key)
-                if track is None:
-                    try:
-                        track = plex.fetchItem(rating_key)
-                        track_cache[rating_key] = track
-                    except Exception as exc:
-                        console.print(
-                            f"[red]Failed to fetch track[/] [dim]{shorten(norm)}[/]: {exc}"
-                        )
+                    track = track_cache.get(rating_key)
+                    if track is None:
+                        try:
+                            track = plex.fetchItem(rating_key)
+                            track_cache[rating_key] = track
+                        except Exception as exc:
+                            console.print(
+                                f"[red]Failed to fetch track[/] [dim]{shorten(norm)}[/]: {exc}"
+                            )
+                            update_verbose_progress(progress, task, with_rating, matched, updated)
+                            continue
+
+                    current = getattr(track, "userRating", None)
+                    if current == rating:
+                        log_verbose(f"Already up to date: {track.title} ({shorten(norm)})")
                         update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
 
-                current = getattr(track, "userRating", None)
-                if current == rating:
-                    log_verbose(f"Already up to date: {track.title} ({shorten(norm)})")
+                    updated += 1
+                    console.print(
+                        f"[white]{track.title}[/] "
+                        f"[dim]{shorten(norm)}[/] "
+                        f"[yellow]{current} → {rating}[/]"
+                    )
+
+                    if not DRY_RUN:
+                        track.rate(float(rating))
+
                     update_verbose_progress(progress, task, with_rating, matched, updated)
-                    continue
-
-                updated += 1
-                console.print(
-                    f"[white]{track.title}[/] "
-                    f"[dim]{shorten(norm)}[/] "
-                    f"[yellow]{current} → {rating}[/]"
-                )
-
-                if not DRY_RUN:
-                    track.rate(float(rating))
-
-                update_verbose_progress(progress, task, with_rating, matched, updated)
+    except KeyboardInterrupt:
+        interrupted = True
+        console.print("\n[yellow]Interrupted by user. Partial results:[/]")
 
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
