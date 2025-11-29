@@ -1,11 +1,12 @@
+import os
+import time
+import json
+from pathlib import Path
+
 from rich import print
 from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
-import os
-import time
-from pathlib import Path
-
 from dotenv import load_dotenv
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, POPM
@@ -18,6 +19,7 @@ BASE_URL = os.getenv("PLEX_URL")
 TOKEN = os.getenv("PLEX_TOKEN")
 LIBRARY_NAME = os.getenv("PLEX_LIBRARY")
 MUSIC_ROOT = Path(os.getenv("PATH_LIBRARY"))
+INDEX_CACHE_FILE = Path(__file__).with_name("plex_path_index.json")
 DRY_RUN = True
 
 POPM_TO_STARS = {
@@ -76,23 +78,47 @@ def build_plex_path_index(music_section):
     index = {}
     for track in music_section.all(libtype="track"):
         for loc in track.locations:
-            index[os.path.normpath(loc)] = track
+            index[os.path.normpath(loc)] = track.ratingKey
     return index
+
+def load_cached_index(cache_file: Path):
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text())
+        # normalize paths on load to avoid OS differences
+        return {os.path.normpath(k): v for k, v in data.items()}
+    except Exception as exc:
+        console.print(f"[red]Failed to load cached Plex index:[/] {exc}")
+        return None
+
+def save_cached_index(cache_file: Path, index: dict):
+    try:
+        cache_file.write_text(json.dumps(index))
+        console.print(f"[green]Saved Plex index cache[/] → {cache_file}")
+    except Exception as exc:
+        console.print(f"[red]Failed to save Plex index:[/] {exc}")
 
 def main():
     console.print(f"[bold cyan]Connecting to Plex at[/] {BASE_URL}")
     plex = PlexServer(BASE_URL, TOKEN)
     music = plex.library.section(LIBRARY_NAME)
 
-    console.print("[yellow]Building Plex index...[/]")
-    plex_index = build_plex_path_index(music)
-    console.print(f"[green]Indexed {len(plex_index)} track paths[/]")
+    plex_index = load_cached_index(INDEX_CACHE_FILE)
+    if plex_index is not None:
+        console.print(f"[green]Loaded cached Plex index[/] ({len(plex_index)} paths)")
+    else:
+        console.print("[yellow]Building Plex index...[/]")
+        plex_index = build_plex_path_index(music)
+        console.print(f"[green]Indexed {len(plex_index)} track paths[/]")
+        save_cached_index(INDEX_CACHE_FILE, plex_index)
 
     total_audio = sum(1 for _ in MUSIC_ROOT.rglob("*") if _.suffix.lower() in (".mp3", ".flac", ".ogg"))
 
     updated = 0
     matched = 0
     with_rating = 0
+    track_cache = {}
 
     with Progress(console=console) as progress:
         task = progress.add_task("[blue]Processing files...", total=total_audio)
@@ -118,10 +144,21 @@ def main():
                 with_rating += 1
 
                 norm = os.path.normpath(str(file_path))
-                track = plex_index.get(norm)
-                if not track:
+                rating_key = plex_index.get(norm)
+                if not rating_key:
                     continue
                 matched += 1
+
+                track = track_cache.get(rating_key)
+                if track is None:
+                    try:
+                        track = plex.fetchItem(rating_key)
+                        track_cache[rating_key] = track
+                    except Exception as exc:
+                        console.print(
+                            f"[red]Failed to fetch track[/] [dim]{shorten(norm)}[/]: {exc}"
+                        )
+                        continue
 
                 current = getattr(track, "userRating", None)
                 if current == rating:
