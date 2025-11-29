@@ -86,6 +86,26 @@ def build_plex_path_index(music_section):
             index[os.path.normpath(loc)] = track.ratingKey
     return index
 
+def build_suffix_index(plex_index: dict, min_parts: int = 2, max_parts: int = 6):
+    """
+    Build a map of trailing path segments to rating keys when the tail is unique.
+    This helps match when Plex path roots differ from the local library root.
+    """
+    tails = {}
+    collisions = set()
+    for full_path, key in plex_index.items():
+        parts = Path(full_path).parts
+        for n in range(min_parts, min(max_parts, len(parts)) + 1):
+            tail = os.path.normpath(os.path.join(*parts[-n:])).lower()
+            prev = tails.get(tail)
+            if prev is None:
+                tails[tail] = key
+            elif prev != key:
+                collisions.add(tail)
+    for tail in collisions:
+        tails.pop(tail, None)
+    return tails
+
 def load_cached_index(cache_file: Path):
     if not cache_file.exists():
         return None
@@ -125,6 +145,28 @@ def update_verbose_progress(progress: Progress, task_id: int, with_rating: int, 
         ),
     )
 
+def find_rating_key_for_path(file_path: Path, plex_index: dict, suffix_index: dict):
+    """Try to find a Plex rating key for a local path using exact and suffix matches."""
+    norm = os.path.normpath(str(file_path))
+    # 1) exact path match
+    if norm in plex_index:
+        return plex_index[norm], "exact"
+    # 2) case-insensitive match
+    lower_norm = norm.lower()
+    for k, v in plex_index.items():
+        if k.lower() == lower_norm:
+            return v, "case-insensitive"
+    # 3) tail-based match
+    tail = os.path.normpath(str(file_path)).lower()
+    if tail in suffix_index:
+        return suffix_index[tail], "tail-full"
+    parts = file_path.parts
+    for n in range(2, min(len(parts), 6) + 1):
+        tail = os.path.normpath(os.path.join(*parts[-n:])).lower()
+        if tail in suffix_index:
+            return suffix_index[tail], f"tail-{n}"
+    return None, None
+
 def main():
     signal.signal(signal.SIGINT, handle_stop_signal)
     signal.signal(signal.SIGTERM, handle_stop_signal)
@@ -141,6 +183,7 @@ def main():
         plex_index = build_plex_path_index(music)
         console.print(f"[green]Indexed {len(plex_index)} track paths[/]")
         save_cached_index(INDEX_CACHE_FILE, plex_index)
+    suffix_index = build_suffix_index(plex_index)
 
     total_audio = sum(1 for _ in MUSIC_ROOT.rglob("*") if _.suffix.lower() in (".mp3", ".flac", ".ogg"))
 
@@ -180,12 +223,13 @@ def main():
                     with_rating += 1
 
                     norm = os.path.normpath(str(file_path))
-                    rating_key = plex_index.get(norm)
+                    rating_key, match_kind = find_rating_key_for_path(file_path, plex_index, suffix_index)
                     if not rating_key:
                         log_verbose(f"No Plex match for rated file: {shorten(norm)}")
                         update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
                     matched += 1
+                    log_verbose(f"Matched Plex track ({match_kind}): {shorten(norm)}")
 
                     track = track_cache.get(rating_key)
                     if track is None:
