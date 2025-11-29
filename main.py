@@ -198,6 +198,7 @@ def main():
                             )
                             update_verbose_progress(progress, task, with_rating, matched, updated)
                             continue
+                    log_verbose(f"Matched Plex track: {track.title} ({shorten(norm)})")
 
                     current = getattr(track, "userRating", None)
                     if current == rating:
