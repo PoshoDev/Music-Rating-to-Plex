@@ -24,6 +24,7 @@ INDEX_CACHE_FILE = Path(__file__).with_name("plex_path_index.json")
 DRY_RUN = True
 VERBOSE = True
 STOP_REQUESTED = False
+error_rows_global = []
 
 POPM_TO_STARS = {
     0: 0.0, 13: 0.5, 1: 1.0, 54: 1.5, 64: 2.0,
@@ -155,7 +156,7 @@ def update_verbose_progress(progress: Progress, task_id: int, with_rating: int, 
         task_id,
         description=(
             f"[blue]Processing files...[/] "
-            f"rated:{with_rating} matched:{matched} updated:{updated}"
+            f"rated:{with_rating} matched:{matched} updated:{updated} errors:{len(error_rows_global)}"
         ),
     )
 
@@ -208,6 +209,9 @@ def main():
     interrupted = False
     matched_rows = []
     error_rows = []
+    # keep a reference for verbose progress updates
+    global error_rows_global
+    error_rows_global = error_rows
 
     try:
         with Progress(console=console) as progress:
