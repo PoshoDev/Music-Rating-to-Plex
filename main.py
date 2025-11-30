@@ -56,12 +56,13 @@ def flac_rating_to_plex_rating(r):
 def get_musicbee_rating_for_file(path: Path):
     suf = path.suffix.lower()
     artist = album = title = ""
+    error_msg = None
 
     if suf == ".mp3":
         try:
             tags = ID3(path)
-        except:
-            return None, artist, album, title
+        except Exception as exc:
+            return None, artist, album, title, f"ID3 read error: {exc}"
         def get_text(frame_id):
             frame = tags.get(frame_id)
             if frame and getattr(frame, "text", None):
@@ -72,23 +73,23 @@ def get_musicbee_rating_for_file(path: Path):
         title = get_text("TIT2")
         popms = tags.getall("POPM")
         if not popms:
-            return None, artist, album, title
+            return None, artist, album, title, "No POPM rating frame"
         frame = next((f for f in popms if "musicbee" in f.email.lower()), popms[0])
-        return popm_value_to_plex_rating(frame.rating), artist, album, title
+        return popm_value_to_plex_rating(frame.rating), artist, album, title, None
 
     elif suf in (".flac", ".ogg"):
         try:
             f = FLAC(path)
-        except:
-            return None, artist, album, title
+        except Exception as exc:
+            return None, artist, album, title, f"FLAC/OGG read error: {exc}"
         artist = (f.get("artist") or f.get("ARTIST") or [""])[0]
         album = (f.get("album") or f.get("ALBUM") or [""])[0]
         title = (f.get("title") or f.get("TITLE") or [""])[0]
         if "RATING" not in f:
-            return None, artist, album, title
-        return flac_rating_to_plex_rating(f["RATING"][0]), artist, album, title
+            return None, artist, album, title, "No RATING tag"
+        return flac_rating_to_plex_rating(f["RATING"][0]), artist, album, title, None
 
-    return None, artist, album, title
+    return None, artist, album, title, "Unsupported file type"
 
 def build_plex_path_index(music_section):
     index = {}
@@ -206,7 +207,7 @@ def main():
     track_cache = {}
     interrupted = False
     matched_rows = []
-    unmatched_rows = []
+    error_rows = []
 
     try:
         with Progress(console=console) as progress:
@@ -231,7 +232,20 @@ def main():
 
                     progress.advance(task)
 
-                    rating, artist_mb, album_mb, title_mb = get_musicbee_rating_for_file(file_path)
+                    rating, artist_mb, album_mb, title_mb, rating_error = get_musicbee_rating_for_file(file_path)
+                    if rating_error:
+                        error_rows.append(
+                            (
+                                artist_mb,
+                                album_mb,
+                                title_mb or file_path.stem,
+                                "",
+                                str(file_path),
+                                rating_error,
+                            )
+                        )
+                        update_verbose_progress(progress, task, with_rating, matched, updated)
+                        continue
                     if rating is None:
                         update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
@@ -241,13 +255,14 @@ def main():
                     rating_key, match_kind = find_rating_key_for_path(file_path, plex_index, suffix_index)
                     if not rating_key:
                         log_verbose(f"No Plex match for rated file: {shorten(norm)}")
-                        unmatched_rows.append(
+                        error_rows.append(
                             (
                                 artist_mb,
                                 album_mb,
                                 title_mb or file_path.stem,
                                 rating,
                                 str(file_path),
+                                "No Plex match",
                             )
                         )
                         update_verbose_progress(progress, task, with_rating, matched, updated)
@@ -263,6 +278,16 @@ def main():
                         except Exception as exc:
                             console.print(
                                 f"[red]Failed to fetch track[/] [dim]{shorten(norm)}[/]: {exc}"
+                            )
+                            error_rows.append(
+                                (
+                                    artist_mb,
+                                    album_mb,
+                                    title_mb or file_path.stem,
+                                    rating,
+                                    str(file_path),
+                                    f"Plex fetch error: {exc}",
+                                )
                             )
                             update_verbose_progress(progress, task, with_rating, matched, updated)
                             continue
@@ -298,8 +323,8 @@ def main():
         updated_table.add_column("👤 Artist")
         updated_table.add_column("📀 Album")
         updated_table.add_column("🎵 Track")
-        updated_table.add_column("🐝 MusicBee")
-        updated_table.add_column("⭐ Plex")
+        updated_table.add_column("🐝 MB Rating")
+        updated_table.add_column("⭐ Plex Rating")
         updated_table.add_column("📝 Updating?")
         for title, artist, album, mb_rating, plex_rating, updating in matched_rows:
             row_style = "dim" if not updating else None
@@ -316,28 +341,30 @@ def main():
     else:
         console.print("[yellow]No tracks matched[/]")
 
-    if unmatched_rows:
-        unmatched_table = Table(
-            title="Rated Files Not Matched in Plex",
+    if error_rows:
+        error_table = Table(
+            title="Errors",
             show_header=True,
-            header_style="bold yellow",
+            style="red",
         )
-        unmatched_table.add_column("👤 Artist")
-        unmatched_table.add_column("📀 Album")
-        unmatched_table.add_column("🎵 Track")
-        unmatched_table.add_column("⭐ Rating")
-        unmatched_table.add_column("📄 Full Path")
-        for artist, album, title, rating, full_path in unmatched_rows:
-            unmatched_table.add_row(
+        error_table.add_column("👤 Artist")
+        error_table.add_column("📀 Album")
+        error_table.add_column("🎵 Track")
+        error_table.add_column("⭐ Rating")
+        error_table.add_column("📄 Full Path")
+        error_table.add_column("❌️ Error Message")
+        for artist, album, title, rating, full_path, msg in error_rows:
+            error_table.add_row(
                 str(artist),
                 str(album),
                 str(title),
                 str(rating),
                 full_path,
+                msg,
             )
-        console.print(unmatched_table)
+        console.print(error_table)
     else:
-        console.print("[green]✅️ All rated files matched in Plex[/]")
+        console.print("[green]No errors encountered[/]")
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
     table.add_column("Metric")
