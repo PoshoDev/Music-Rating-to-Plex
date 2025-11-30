@@ -30,6 +30,7 @@ POPM_TO_STARS = {
     118: 2.5, 128: 3.0, 186: 3.5, 196: 4.0,
     242: 4.5, 255: 5.0,
 }
+FILETYPES = (".mp3", ".flac", ".ogg", ".m4a", ".wav")
 
 def shorten(path: str, parts: int = 3) -> str:
     p = Path(path)
@@ -197,7 +198,7 @@ def main():
         save_cached_index(INDEX_CACHE_FILE, plex_index)
     suffix_index = build_suffix_index(plex_index)
 
-    total_audio = sum(1 for _ in MUSIC_ROOT.rglob("*") if _.suffix.lower() in (".mp3", ".flac", ".ogg"))
+    total_audio = sum(1 for _ in MUSIC_ROOT.rglob("*") if _.suffix.lower() in FILETYPES)
 
     updated = 0
     matched = 0
@@ -225,7 +226,7 @@ def main():
                         f"[dim]Checking[/] [cyan]{shorten(str(file_path))}[/]"
                     )
 
-                    if file_path.suffix.lower() not in (".mp3", ".flac", ".ogg"):
+                    if file_path.suffix.lower() not in FILETYPES:
                         continue
 
                     progress.advance(task)
