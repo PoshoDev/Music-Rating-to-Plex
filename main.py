@@ -1,18 +1,17 @@
-import os
-import time
 import json
+import os
 import signal
 from pathlib import Path
 
-from rich import print
-from rich.console import Console
-from rich.progress import Progress
-from rich.table import Table
 from dotenv import load_dotenv
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, POPM
 from mutagen.mp4 import MP4
 from plexapi.server import PlexServer
+from rich import print
+from rich.console import Console
+from rich.progress import Progress
+from rich.table import Table
 
 console = Console()
 load_dotenv()
@@ -22,7 +21,7 @@ TOKEN = os.getenv("PLEX_TOKEN")
 LIBRARY_NAME = os.getenv("PLEX_LIBRARY")
 MUSIC_ROOT = Path(os.getenv("PATH_LIBRARY"))
 INDEX_CACHE_FILE = Path(__file__).with_name("plex_path_index.json")
-DRY_RUN = True
+DRY_RUN = False
 VERBOSE = True
 STOP_REQUESTED = False
 error_rows_global = []
