@@ -280,6 +280,7 @@ def main():
     interrupted = False
     matched_rows = []
     error_rows = []
+    success_paths = []
     # keep a reference for verbose progress updates
     global error_rows_global
     error_rows_global = error_rows
@@ -374,6 +375,7 @@ def main():
                     if current == rating:
                         log_verbose(f"Already up to date: {track.title} ({shorten(norm)})")
                         matched_rows.append((track.title, artist, album, rating, current, False))
+                        success_paths.append(str(file_path))
                         update_verbose_progress(progress, task, with_rating, matched, updated)
                         continue
 
@@ -384,6 +386,7 @@ def main():
                         f"[yellow]{current} → {rating}[/]"
                     )
                     matched_rows.append((track.title, artist, album, rating, current, True))
+                    success_paths.append(str(file_path))
 
                     if not DRY_RUN:
                         track.rate(float(rating))
@@ -440,6 +443,17 @@ def main():
         console.print(error_table)
     else:
         console.print("[green]No errors encountered[/]")
+
+    # Write successful tracks to m3u
+    if success_paths:
+        m3u_path = Path(__file__).with_name("successful.m3u")
+        try:
+            with m3u_path.open("a") as m3u_file:
+                for p in success_paths:
+                    m3u_file.write(f"{p}\n")
+            console.print(f"[green]Appended {len(success_paths)} successful tracks to[/] {m3u_path}")
+        except Exception as exc:
+            console.print(f"[red]Failed to write successful.m3u:[/] {exc}")
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
     table.add_column("Metric")
