@@ -295,12 +295,12 @@ def main():
 
     if matched_rows:
         updated_table = Table(title="Matched Tracks", show_header=True, header_style="bold green")
-        updated_table.add_column("Artist")
-        updated_table.add_column("Album")
-        updated_table.add_column("Track")
-        updated_table.add_column("MB Rating")
-        updated_table.add_column("Plex Rating")
-        updated_table.add_column("Updating")
+        updated_table.add_column("👤 Artist")
+        updated_table.add_column("📀 Album")
+        updated_table.add_column("🎵 Track")
+        updated_table.add_column("🐝 MusicBee")
+        updated_table.add_column("⭐ Plex")
+        updated_table.add_column("📝 Updating?")
         for title, artist, album, mb_rating, plex_rating, updating in matched_rows:
             row_style = "dim" if not updating else None
             updated_table.add_row(
@@ -322,11 +322,11 @@ def main():
             show_header=True,
             header_style="bold yellow",
         )
-        unmatched_table.add_column("Artist")
-        unmatched_table.add_column("Album")
-        unmatched_table.add_column("Track")
-        unmatched_table.add_column("Rating")
-        unmatched_table.add_column("Full Path")
+        unmatched_table.add_column("👤 Artist")
+        unmatched_table.add_column("📀 Album")
+        unmatched_table.add_column("🎵 Track")
+        unmatched_table.add_column("⭐ Rating")
+        unmatched_table.add_column("📄 Full Path")
         for artist, album, title, rating, full_path in unmatched_rows:
             unmatched_table.add_row(
                 str(artist),
@@ -337,7 +337,7 @@ def main():
             )
         console.print(unmatched_table)
     else:
-        console.print("[green]All rated files matched in Plex[/]")
+        console.print("[green]✅️ All rated files matched in Plex[/]")
 
     table = Table(title="Summary", show_header=True, header_style="bold magenta")
     table.add_column("Metric")
