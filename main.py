@@ -11,6 +11,7 @@ from rich.table import Table
 from dotenv import load_dotenv
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, POPM
+from mutagen.mp4 import MP4
 from plexapi.server import PlexServer
 
 console = Console()
@@ -31,6 +32,7 @@ POPM_TO_STARS = {
     118: 2.5, 128: 3.0, 186: 3.5, 196: 4.0,
     242: 4.5, 255: 5.0,
 }
+# Limit to formats we actually parse to avoid false positives/errors
 FILETYPES = (".mp3", ".flac", ".ogg", ".m4a", ".wav")
 
 def shorten(path: str, parts: int = 3) -> str:
@@ -74,6 +76,29 @@ def get_txxx_rating(tags):
             return rating
     return None
 
+def extract_mp4_rating(tags: MP4):
+    """Pull rating from common MP4 atoms used by MusicBee/iTunes."""
+    rating_keys = [
+        "----:com.apple.iTunes:RATING",
+        "----:com.apple.iTunes:Rating",
+        "----:com.apple.iTunes:POPM",
+    ]
+    for key in rating_keys:
+        if key not in tags:
+            continue
+        val = tags[key]
+        if isinstance(val, list) and val:
+            val = val[0]
+        if isinstance(val, bytes):
+            try:
+                val = val.decode("utf-8", errors="ignore")
+            except Exception:
+                continue
+        rating = generic_rating_to_plex(val)
+        if rating is not None:
+            return rating
+    return None
+
 def flac_rating_to_plex_rating(r):
     if r is None:
         return None
@@ -89,7 +114,7 @@ def get_musicbee_rating_for_file(path: Path):
     artist = album = title = ""
     error_msg = None
 
-    if suf == ".mp3":
+    if suf in (".mp3", ".wav"):
         try:
             tags = ID3(path)
         except Exception as exc:
@@ -122,6 +147,19 @@ def get_musicbee_rating_for_file(path: Path):
         if "RATING" not in f:
             return None, artist, album, title, None
         return flac_rating_to_plex_rating(f["RATING"][0]), artist, album, title, None
+
+    elif suf == ".m4a":
+        try:
+            mp4 = MP4(path)
+        except Exception as exc:
+            return None, artist, album, title, f"MP4 read error: {exc}"
+        artist = (mp4.get("\xa9ART") or [""])[0]
+        album = (mp4.get("\xa9alb") or [""])[0]
+        title = (mp4.get("\xa9nam") or [""])[0]
+        rating = extract_mp4_rating(mp4)
+        if rating is None:
+            return None, artist, album, title, None
+        return rating, artist, album, title, None
 
     return None, artist, album, title, "Unsupported file type"
 
