@@ -44,6 +44,36 @@ def popm_value_to_plex_rating(popm):
     stars = POPM_TO_STARS[nearest]
     return int(round(stars * 2))  # 0–10
 
+def generic_rating_to_plex(r):
+    """Convert a variety of rating scales to Plex 0–10."""
+    if r is None:
+        return None
+    try:
+        val = float(r)
+    except Exception:
+        return None
+    if 0.0 <= val <= 1.0:
+        return int(round(val * 10))  # fmps style 0-1
+    if 0.0 <= val <= 5.0:
+        return int(round(val * 2))  # 0–5 stars
+    if 0.0 <= val <= 100.0:
+        stars = max(0.0, min(5.0, val / 20.0))
+        return int(round(stars * 2))
+    return None
+
+def get_txxx_rating(tags):
+    """Look for text rating frames like FMPS_Rating or RATING."""
+    for txxx in tags.getall("TXXX"):
+        desc = (txxx.desc or "").lower()
+        if "rating" not in desc:
+            continue
+        if not getattr(txxx, "text", None):
+            continue
+        rating = generic_rating_to_plex(txxx.text[0])
+        if rating is not None:
+            return rating
+    return None
+
 def flac_rating_to_plex_rating(r):
     if r is None:
         return None
@@ -74,7 +104,10 @@ def get_musicbee_rating_for_file(path: Path):
         title = get_text("TIT2")
         popms = tags.getall("POPM")
         if not popms:
-            return None, artist, album, title, "No POPM rating frame"
+            txxx_rating = get_txxx_rating(tags)
+            if txxx_rating is not None:
+                return txxx_rating, artist, album, title, None
+            return None, artist, album, title, None
         frame = next((f for f in popms if "musicbee" in f.email.lower()), popms[0])
         return popm_value_to_plex_rating(frame.rating), artist, album, title, None
 
@@ -87,7 +120,7 @@ def get_musicbee_rating_for_file(path: Path):
         album = (f.get("album") or f.get("ALBUM") or [""])[0]
         title = (f.get("title") or f.get("TITLE") or [""])[0]
         if "RATING" not in f:
-            return None, artist, album, title, "No RATING tag"
+            return None, artist, album, title, None
         return flac_rating_to_plex_rating(f["RATING"][0]), artist, album, title, None
 
     return None, artist, album, title, "Unsupported file type"
