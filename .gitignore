@@ -1,4 +1,4 @@
-plex_path_index.json
+plex_path_index*.json
 *.m3u
 cache.json
 temp
